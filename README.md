@@ -3,7 +3,6 @@
 Анимированный персонаж-компаньон для вашего рабочего стола, теперь с расширенными возможностями мониторинга, аналитики и развертывания.
 
 ![Desktop Waifu - Спрайт Сидя](https://r2.flowith.net/files/o/1750000420473-anime_girl_waifu_sitting_transparent_background_index_2@1024x1536.png)
-![Desktop Waifu - Спрайт Ходьбы 1](https://r2.flowith.net/files/o/1750000407948-anime_waifu_desktop_assistant_character_index_0@1024x1536.png)
 ![Desktop Waifu - Спрайт Ходьбы 2](https://r2.flowith.net/files/o/1750000406880-anime_girl_walking_animation_frame_index_1@1024x1536.png)
 ![Desktop Waifu - Спрайт Покоя](https://r2.flowith.net/files/o/1750000401036-anime_waifu_idle_pose_transparent_background_index_3@1024x1536.png)
 
