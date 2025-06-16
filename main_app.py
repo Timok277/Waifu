@@ -15,6 +15,9 @@ import os
 import ctypes
 import math
 from screeninfo import get_monitors
+import subprocess
+import zipfile
+from packaging.version import parse as parse_version
 
 try:
     import win32gui
@@ -60,7 +63,78 @@ GRAVITY = 0.8
 TERMINAL_VELOCITY = 20
 CURSOR_EVADE_DISTANCE = 50
 
+# --- Конфигурация Обновлений ---
+CURRENT_VERSION = "2.0.0" # Текущая версия приложения
+GITHUB_REPO = "Timok277/Waifu" # Путь к вашему репозиторию
+
 # --- Вспомогательные функции ---
+def check_for_updates():
+    """Проверяет наличие обновлений на GitHub и запускает процесс обновления."""
+    logging.info(f"Текущая версия: {CURRENT_VERSION}. Проверка обновлений...")
+    try:
+        api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+        response = requests.get(api_url, timeout=5)
+        response.raise_for_status()
+        latest_release = response.json()
+        latest_version = latest_release["tag_name"].lstrip('v')
+        
+        logging.info(f"Последняя версия на GitHub: {latest_version}")
+
+        if parse_version(latest_version) > parse_version(CURRENT_VERSION):
+            logging.info("Доступна новая версия! Начинаю обновление.")
+            
+            # Найти ассет с обновлением (должен называться client.zip)
+            asset = next((a for a in latest_release['assets'] if a['name'] == 'client.zip'), None)
+            if not asset:
+                logging.error("Не найден 'client.zip' в последнем релизе. Обновление отменено.")
+                return
+
+            # Скачать архив
+            logging.info("Скачивание архива...")
+            download_url = asset['browser_download_url']
+            update_zip_path = "update.zip"
+            with requests.get(download_url, stream=True) as r:
+                r.raise_for_status()
+                with open(update_zip_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
+
+            # Распаковать архив
+            update_dir = "update_temp"
+            if os.path.exists(update_dir):
+                import shutil
+                shutil.rmtree(update_dir)
+            with zipfile.ZipFile(update_zip_path, 'r') as zip_ref:
+                zip_ref.extractall(update_dir)
+            
+            # Создать и запустить скрипт обновления
+            updater_script_path = "updater.bat"
+            with open(updater_script_path, "w", encoding="cp866") as f:
+                f.write(f"""
+@echo off
+echo Обновление Waifu... Пожалуйста, подождите.
+timeout /t 3 /nobreak > nul
+xcopy "{update_dir}" . /Y /E /I /Q
+rd /s /q "{update_dir}"
+del "{update_zip_path}"
+echo Обновление завершено! Запускаю приложение...
+start "" "{sys.executable}" main_app.py
+del "%~f0"
+""")
+            
+            # Запускаем батник и выходим
+            subprocess.Popen([updater_script_path], creationflags=subprocess.CREATE_NEW_CONSOLE)
+            logging.info("Запущен скрипт обновления. Приложение будет закрыто.")
+            sys.exit(0)
+            
+        else:
+            logging.info("У вас последняя версия приложения.")
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Не удалось проверить обновления: {e}")
+    except Exception as e:
+        logging.error(f"Произошла ошибка во время процесса обновления: {e}")
+
 def check_server_availability():
     try:
         requests.get(SERVER_URL, timeout=2)
@@ -499,6 +573,9 @@ if __name__ == "__main__":
     if not os.path.exists("assets"):
         logging.critical("Папка 'assets' не найдена! Запуск невозможен.")
         sys.exit(1)
+
+    # Перед запуском основного приложения проверяем обновления
+    check_for_updates()
 
     logging.info("Запуск приложения Desktop Waifu.")
     if not check_server_availability():
