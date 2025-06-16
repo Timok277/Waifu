@@ -1,0 +1,18 @@
+name: Auto Update
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  autoupdate:
+    name: Auto-update PRs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: docker://chinthakagodawita/autoupdate-action:v1
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          MERGE_CONFLICT_ACTION: "fail" # По умолчанию, можно изменить на "ignore"
+          PR_FILTER: "all" # Обновлять все PR, можно изменить на "labelled" 
