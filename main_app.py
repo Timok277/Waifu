@@ -64,7 +64,7 @@ TERMINAL_VELOCITY = 20
 CURSOR_EVADE_DISTANCE = 50
 
 # --- Конфигурация Обновлений ---
-CURRENT_VERSION = "2.0.1" # Текущая версия приложения
+CURRENT_VERSION = "2.0.3" # Текущая версия приложения
 GITHUB_REPO = "Timok277/Waifu" # Путь к вашему репозиторию
 
 # --- Вспомогательные функции ---
