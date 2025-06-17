@@ -64,7 +64,7 @@ TERMINAL_VELOCITY = 20
 CURSOR_EVADE_DISTANCE = 50
 
 # --- Конфигурация Обновлений ---
-CURRENT_VERSION = "2.0.4" # Текущая версия приложения
+CURRENT_VERSION = "2.0.5" # Текущая версия приложения
 GITHUB_REPO = "Timok277/Waifu" # Путь к вашему репозиторию
 
 # --- Вспомогательные функции ---
@@ -117,6 +117,11 @@ def check_for_updates():
 @echo off
 rem Switch to a unicode codepage to handle all paths, just in case.
 chcp 65001 > nul
+
+rem Clean up junk files from previous failed updates, if they exist
+if exist Step del Step > nul 2>&1
+if exist Waiting del Waiting > nul 2>&1
+
 echo.
 echo ===============================================
 echo      Updating Waifu to version {latest_version}
@@ -127,7 +132,7 @@ echo The application will restart automatically.
 echo.
 
 rem Wait for the main application to close completely
-echo --> Waiting for application to exit...
+echo --^> Waiting for application to exit...
 timeout /t 5 /nobreak > nul
 
 rem Copy new files, overwriting old ones.
@@ -136,7 +141,7 @@ rem /E    :: copy subdirectories, including empty ones.
 rem /IS   :: include same files (overwrite).
 rem /IT   :: include "tweaked" files (essential for overwrite).
 rem /NFL /NDL /NJH /NJS /nc /ns /np :: Suppress Robocopy's own logging for a cleaner output.
-echo --> Step 1/3: Copying new files...
+echo --^> Step 1/3: Copying new files...
 robocopy "{source_path}" . /E /IS /IT /NFL /NDL /NJH /NJS /nc /ns /np
 
 rem Check if Robocopy was successful. Exit codes >= 8 are errors.
@@ -150,12 +155,12 @@ if %errorlevel% geq 8 (
 )
 
 rem Clean up temporary files
-echo --> Step 2/3: Cleaning up temporary files...
+echo --^> Step 2/3: Cleaning up temporary files...
 rd /s /q "{update_dir}"
 del "{update_zip_path}"
 
 rem Restart the application
-echo --> Step 3/3: Restarting application...
+echo --^> Step 3/3: Restarting application...
 echo.
 echo Update complete!
 start "" "{sys.executable}" main_app.py
