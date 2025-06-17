@@ -73,7 +73,7 @@ def check_for_updates():
     logging.info(f"Текущая версия: {CURRENT_VERSION}. Проверка обновлений...")
     try:
         api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
-        response = requests.get(api_url, timeout=5)
+        response = requests.get(api_url, timeout=10)
         response.raise_for_status()
         latest_release = response.json()
         latest_version = latest_release["tag_name"].lstrip('v')
@@ -83,17 +83,15 @@ def check_for_updates():
         if parse_version(latest_version) > parse_version(CURRENT_VERSION):
             logging.info("Доступна новая версия! Начинаю обновление.")
             
-            # Найти ассет с обновлением (должен называться client.zip)
-            asset = next((a for a in latest_release['assets'] if a['name'] == 'client.zip'), None)
-            if not asset:
-                logging.error("Не найден 'client.zip' в последнем релизе. Обновление отменено.")
+            download_url = latest_release.get("zipball_url")
+            if not download_url:
+                logging.error("Не найден URL для скачивания исходного кода (zipball_url) в релизе.")
                 return
 
             # Скачать архив
-            logging.info("Скачивание архива...")
-            download_url = asset['browser_download_url']
-            update_zip_path = "update.zip"
-            with requests.get(download_url, stream=True) as r:
+            logging.info(f"Скачивание архива с исходным кодом из {download_url}...")
+            update_zip_path = "update_source.zip"
+            with requests.get(download_url, stream=True, timeout=30) as r:
                 r.raise_for_status()
                 with open(update_zip_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
@@ -104,9 +102,14 @@ def check_for_updates():
             if os.path.exists(update_dir):
                 import shutil
                 shutil.rmtree(update_dir)
+            
             with zipfile.ZipFile(update_zip_path, 'r') as zip_ref:
+                # Архив от GitHub содержит одну папку с исходниками, нам нужно ее имя
+                root_folder_in_zip = zip_ref.namelist()[0]
                 zip_ref.extractall(update_dir)
             
+            source_path = os.path.join(update_dir, root_folder_in_zip)
+
             # Создать и запустить скрипт обновления
             updater_script_path = "updater.bat"
             with open(updater_script_path, "w", encoding="cp866") as f:
@@ -114,11 +117,14 @@ def check_for_updates():
 @echo off
 echo Обновление Waifu... Пожалуйста, подождите.
 timeout /t 3 /nobreak > nul
-xcopy "{update_dir}" . /Y /E /I /Q
+rem Копируем содержимое из скачанной папки в текущую директорию
+xcopy "{source_path}" . /Y /E /I /Q
+rem Очистка временных файлов
 rd /s /q "{update_dir}"
 del "{update_zip_path}"
 echo Обновление завершено! Запускаю приложение...
 start "" "{sys.executable}" main_app.py
+rem Самоудаление скрипта
 del "%~f0"
 """)
             
