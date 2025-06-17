@@ -64,7 +64,7 @@ TERMINAL_VELOCITY = 20
 CURSOR_EVADE_DISTANCE = 50
 
 # --- Конфигурация Обновлений ---
-CURRENT_VERSION = "2.0.2" # Текущая версия приложения
+CURRENT_VERSION = "2.0.1" # Текущая версия приложения
 GITHUB_REPO = "Timok277/Waifu" # Путь к вашему репозиторию
 
 # --- Вспомогательные функции ---
@@ -115,16 +115,36 @@ def check_for_updates():
             with open(updater_script_path, "w", encoding="cp866") as f:
                 f.write(f"""
 @echo off
-echo Обновление Waifu... Пожалуйста, подождите.
+chcp 65001 > nul
+echo.
+echo ===============================================
+echo      Обновление Waifu до версии {latest_version}
+echo ===============================================
+echo.
+echo Пожалуйста, не закрывайте это окно.
+echo.
+
+rem Ожидание полного закрытия основного приложения
 timeout /t 3 /nobreak > nul
-rem Копируем содержимое из скачанной папки в текущую директорию
-xcopy "{source_path}" . /Y /E /I /Q
-rem Очистка временных файлов
+
+rem Перемещение новых файлов с заменой старых.
+rem Robocopy используется как более надежная замена xcopy.
+rem Ключ /MOVE перемещает файлы (копирует и удаляет из источника), что идеально для обновления.
+rem Ключи /E /NFL /NDL /NJH /NJS /nc /ns /np убирают лишний "мусор" из вывода Robocopy.
+echo --> Шаг 1/3: Копирование новых файлов...
+robocopy "{source_path}" . /E /MOVE /NFL /NDL /NJH /NJS /nc /ns /np > nul
+
+rem Очистка оставшихся временных файлов
+echo --> Шаг 2/3: Удаление временных файлов...
 rd /s /q "{update_dir}"
 del "{update_zip_path}"
-echo Обновление завершено! Запускаю приложение...
+
+echo --> Шаг 3/3: Перезапуск приложения...
+echo.
+echo Обновление завершено!
 start "" "{sys.executable}" main_app.py
-rem Самоудаление скрипта
+
+rem Самоудаление скрипта обновления
 del "%~f0"
 """)
             
