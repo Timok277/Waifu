@@ -134,3 +134,4 @@ docker-compose.override.yml
 server/.env
 logstash_buffer.db
 server/
+release.ps1
