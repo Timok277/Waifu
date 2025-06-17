@@ -64,7 +64,7 @@ TERMINAL_VELOCITY = 20
 CURSOR_EVADE_DISTANCE = 50
 
 # --- Конфигурация Обновлений ---
-CURRENT_VERSION = "2.0.5" # Текущая версия приложения
+CURRENT_VERSION = "2.0.6" # Текущая версия приложения
 GITHUB_REPO = "Timok277/Waifu" # Путь к вашему репозиторию
 
 # --- Вспомогательные функции ---
@@ -201,11 +201,12 @@ def send_to_server(endpoint: str, data: dict):
 
 # --- Класс Платформы ---
 class Platform:
-    def __init__(self, left, top, right, bottom, is_target=False):
+    def __init__(self, left, top, right, bottom, platform_type='floor', is_target=False):
         self.left = left
         self.top = top
         self.right = right
         self.bottom = bottom
+        self.platform_type = platform_type # 'floor' or 'ceiling'
         self.is_target = is_target
 
     @property
@@ -218,7 +219,8 @@ class Platform:
         return (self.left == other.left and
                 self.top == other.top and
                 self.right == other.right and
-                self.bottom == other.bottom)
+                self.bottom == other.bottom and
+                self.platform_type == other.platform_type)
 
 # --- Класс Персонажа ---
 class WaifuCharacter:
@@ -248,8 +250,10 @@ class WaifuCharacter:
         self.current_sprite_index = 0
         self._timers = {}
 
-        # Платформы
+        # Платформы и экраны
         self.platforms = []
+        self.monitors = []
+        self.primary_monitor = None
         
         self.setup_window()
         self.load_sprites()
@@ -413,25 +417,39 @@ class WaifuCharacter:
         # --- Перемещение и коллизии (всегда) ---
         self.x += self.dx
         self.y += self.dy
-        self.check_ground_collision()
+        self.check_collisions()
+        
+        # --- Проверка на падение за пределы экрана ---
+        if self.primary_monitor:
+            # Находим самую нижнюю точку всех мониторов
+            lowest_point = max(m.y + m.height for m in self.monitors)
+            if self.y > lowest_point + 100: # Если упал ниже на 100px
+                logging.warning("Персонаж упал за пределы экрана! Телепортация в центр.")
+                self.x = self.primary_monitor.x + (self.primary_monitor.width - self.width) / 2
+                self.y = self.primary_monitor.y + (self.primary_monitor.height - self.height) / 2
+                self.dx = 0
+                self.dy = 0
+                self.on_ground = False # Нужно будет снова найти землю
         
         self.move_window(self.x, self.y)
 
-    def check_ground_collision(self):
-        next_foot_y = self.y + self.dy + self.height
+    def check_collisions(self):
+        next_y_feet = self.y + self.dy + self.height
+        next_y_head = self.y + self.dy
         center_x = self.x + self.width / 2
 
         candidate_platforms = [p for p in self.platforms if p.left <= center_x <= p.right]
         
-        ground = None
-        for p in candidate_platforms:
-            is_above = (self.y + self.height) <= p.top + 1
-            if is_above:
-                if ground is None or p.top < ground.top:
-                    ground = p
-
-        if ground:
-            if next_foot_y >= ground.top:
+        # Проверка столкновения с "полом" (когда падаем)
+        if self.dy >= 0:
+            ground = None
+            for p in candidate_platforms:
+                if p.platform_type == 'floor':
+                    is_above = (self.y + self.height) <= p.top + 1
+                    if is_above and (ground is None or p.top < ground.top):
+                        ground = p
+            
+            if ground and next_y_feet >= ground.top:
                 is_new_landing = not self.on_ground
                 self.y = ground.top - self.height
                 self.dy = 0
@@ -445,21 +463,42 @@ class WaifuCharacter:
                 self.on_ground = True
                 return
 
+        # Проверка столкновения с "потолком" (когда прыгаем)
+        if self.dy < 0:
+            ceiling = None
+            for p in candidate_platforms:
+                if p.platform_type == 'ceiling':
+                    is_below = self.y >= p.bottom -1
+                    if is_below and (ceiling is None or p.bottom > ceiling.bottom):
+                        ceiling = p
+            
+            if ceiling and next_y_head <= ceiling.bottom:
+                self.y = ceiling.bottom
+                self.dy = 0 # Останавливаем движение вверх и начинаем падать
+                logging.info("Удар о потолок!")
+                return
+
         self.on_ground = False
-        self.current_platform = None # Если мы в воздухе, у нас нет текущей платформы
+        self.current_platform = None
 
     def update_platforms(self):
+        self.monitors = get_monitors()
+        self.primary_monitor = next((m for m in self.monitors if m.is_primary), self.monitors[0])
+
         new_platforms = []
-        for m in get_monitors():
-            platform = Platform(m.x, m.y + m.height, m.x + m.width, m.y + m.height + 1)
+        # Добавляем нижние границы мониторов как "пол"
+        for m in self.monitors:
+            platform = Platform(m.x, m.y + m.height, m.x + m.width, m.y + m.height + 1, platform_type='floor')
             new_platforms.append(platform)
             
         if not self.is_windows:
             for w in pygetwindow.getAllWindows():
                  if w.visible and not w.isMinimized and w.title and w.width > 150 and w.height > 50:
                     is_target = any(t in w.title for t in TARGET_WINDOW_TITLES)
-                    platform = Platform(w.left, w.top, w.left + w.width, w.top + 1, is_target=is_target)
-                    new_platforms.append(platform)
+                    # "Пол" окна
+                    new_platforms.append(Platform(w.left, w.top, w.left + w.width, w.top + 1, platform_type='floor', is_target=is_target))
+                    # "Потолок" окна
+                    new_platforms.append(Platform(w.left, w.bottom, w.left + w.width, w.bottom + 1, platform_type='ceiling', is_target=is_target))
             self.platforms = sorted(new_platforms, key=lambda p: p.top)
             return
 
@@ -470,28 +509,21 @@ class WaifuCharacter:
         all_windows = []
         for h in hwnds:
             try:
-                if win32gui.IsWindowVisible(h) and win32gui.GetWindowText(h):
-                    w = pygetwindow.Win32Window(h)
-                    if w.visible and not w.isMinimized and w.title and w.width > 150 and w.height > 50:
-                        all_windows.append(w)
+                # Пропускаем окна без заголовка, невидимые, свернутые или слишком маленькие
+                if not win32gui.IsWindowVisible(h) or not win32gui.GetWindowText(h): continue
+                rect = win32gui.GetWindowRect(h)
+                w_width = rect[2] - rect[0]
+                w_height = rect[3] - rect[1]
+                if w_width < 150 or w_height < 50: continue
+
+                w = pygetwindow.Win32Window(h)
+                if w.visible and not w.isMinimized:
+                    all_windows.append(w)
             except (pygetwindow.PyGetWindowException, pywintypes.error):
                 continue
         
-        unoccluded_windows = []
-        for i, w_current in enumerate(all_windows):
-            is_occluded = False
-            for j in range(i):
-                w_occluder = all_windows[j]
-                
-                overlap_x = max(0, min(w_current.right, w_occluder.right) - max(w_current.left, w_occluder.left))
-                overlap_y = max(0, min(w_current.bottom, w_occluder.bottom) - max(w_current.top, w_occluder.top))
-                
-                if overlap_x * overlap_y > 0.7 * (w_current.width * w_current.height):
-                    is_occluded = True
-                    break
-            
-            if not is_occluded:
-                unoccluded_windows.append(w_current)
+        # Используем z-order напрямую - первый в списке EnumWindows самый верхний
+        unoccluded_windows = all_windows
                 
         for w in unoccluded_windows:
             is_target = False
@@ -500,12 +532,14 @@ class WaifuCharacter:
                 _, pid = win32process.GetWindowThreadProcessId(w._hWnd)
                 p = psutil.Process(pid)
                 proc_name = p.name()
-                is_target = proc_name in TARGET_WINDOW_PROCESSES or any(t in w.title for t in TARGET_WINDOW_TITLES)
-            except (psutil.NoSuchProcess, psutil.AccessDenied, pywintypes.error):
-                is_target = any(t in w.title for t in TARGET_WINDOW_TITLES)
+                is_target = proc_name in TARGET_WINDOW_PROCESSES or any(t in w.title for t in w.title)
+            except (psutil.NoSuchProcess, psutil.AccessDenied, pywintypes.error, AttributeError):
+                is_target = any(t in w.title for t in w.title)
             
-            platform = Platform(w.left, w.top, w.left + w.width, w.top + 1, is_target=is_target)
-            new_platforms.append(platform)
+            # "Пол" окна
+            new_platforms.append(Platform(w.left, w.top, w.left + w.width, w.top + 1, platform_type='floor', is_target=is_target))
+            # "Потолок" окна
+            new_platforms.append(Platform(w.left, w.bottom, w.left + w.width, w.bottom + 1, platform_type='ceiling', is_target=is_target))
 
         self.platforms = sorted(new_platforms, key=lambda p: p.top)
 
