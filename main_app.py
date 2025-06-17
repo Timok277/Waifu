@@ -64,7 +64,7 @@ TERMINAL_VELOCITY = 20
 CURSOR_EVADE_DISTANCE = 50
 
 # --- Конфигурация Обновлений ---
-CURRENT_VERSION = "2.0.3" # Текущая версия приложения
+CURRENT_VERSION = "2.0.4" # Текущая версия приложения
 GITHUB_REPO = "Timok277/Waifu" # Путь к вашему репозиторию
 
 # --- Вспомогательные функции ---
@@ -112,39 +112,55 @@ def check_for_updates():
 
             # Создать и запустить скрипт обновления
             updater_script_path = "updater.bat"
-            with open(updater_script_path, "w", encoding="cp866") as f:
+            with open(updater_script_path, "w", encoding="utf-8") as f:
                 f.write(f"""
 @echo off
+rem Switch to a unicode codepage to handle all paths, just in case.
 chcp 65001 > nul
 echo.
 echo ===============================================
-echo      Обновление Waifu до версии {latest_version}
+echo      Updating Waifu to version {latest_version}
 echo ===============================================
 echo.
-echo Пожалуйста, не закрывайте это окно.
+echo Please do not close this window.
+echo The application will restart automatically.
 echo.
 
-rem Ожидание полного закрытия основного приложения
-timeout /t 3 /nobreak > nul
+rem Wait for the main application to close completely
+echo --> Waiting for application to exit...
+timeout /t 5 /nobreak > nul
 
-rem Перемещение новых файлов с заменой старых.
-rem Robocopy используется как более надежная замена xcopy.
-rem Ключ /MOVE перемещает файлы (копирует и удаляет из источника), что идеально для обновления.
-rem Ключи /E /NFL /NDL /NJH /NJS /nc /ns /np убирают лишний "мусор" из вывода Robocopy.
-echo --> Шаг 1/3: Копирование новых файлов...
-robocopy "{source_path}" . /E /MOVE /NFL /NDL /NJH /NJS /nc /ns /np > nul
+rem Copy new files, overwriting old ones.
+rem Robocopy is used as a more robust replacement for xcopy.
+rem /E    :: copy subdirectories, including empty ones.
+rem /IS   :: include same files (overwrite).
+rem /IT   :: include "tweaked" files (essential for overwrite).
+rem /NFL /NDL /NJH /NJS /nc /ns /np :: Suppress Robocopy's own logging for a cleaner output.
+echo --> Step 1/3: Copying new files...
+robocopy "{source_path}" . /E /IS /IT /NFL /NDL /NJH /NJS /nc /ns /np
 
-rem Очистка оставшихся временных файлов
-echo --> Шаг 2/3: Удаление временных файлов...
+rem Check if Robocopy was successful. Exit codes >= 8 are errors.
+if %errorlevel% geq 8 (
+    echo.
+    echo [ERROR] File copy failed. Update cannot continue.
+    echo Please try running the application again.
+    echo Robocopy exit code: %errorlevel%
+    pause
+    exit /b %errorlevel%
+)
+
+rem Clean up temporary files
+echo --> Step 2/3: Cleaning up temporary files...
 rd /s /q "{update_dir}"
 del "{update_zip_path}"
 
-echo --> Шаг 3/3: Перезапуск приложения...
+rem Restart the application
+echo --> Step 3/3: Restarting application...
 echo.
-echo Обновление завершено!
+echo Update complete!
 start "" "{sys.executable}" main_app.py
 
-rem Самоудаление скрипта обновления
+rem Self-delete the updater script
 del "%~f0"
 """)
             
