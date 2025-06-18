@@ -18,6 +18,7 @@ import psutil
 # Зависимости для Windows-специфичных функций
 try:
     import win32gui
+    import win32process
     import pywintypes
     IS_WIN = sys.platform.startswith('win')
 except ImportError:
