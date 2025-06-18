@@ -109,12 +109,16 @@ def check_for_updates():
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
 
+            update_dir = "update_temp"
+            if os.path.exists(update_dir):
+                import shutil
+                shutil.rmtree(update_dir)
+            
             with zipfile.ZipFile(update_zip_path, 'r') as zip_ref:
-                # В архиве Client.zip нет корневой папки, извлекаем напрямую
-                zip_ref.extractall(".")
-
-            # Поскольку мы извлекаем напрямую в корень, source_path не нужен,
-            # но нужно создать .bat скрипт, который дождется завершения и перезапустится.
+                # Архив Client.zip не имеет корневой папки, извлекаем его содержимое в update_dir
+                zip_ref.extractall(update_dir)
+            
+            # Создаем .bat скрипт, который дождется завершения, скопирует файлы и перезапустится.
             updater_script_path = "updater.bat"
             with open(updater_script_path, "w", encoding="utf-8") as f:
                 f.write(f"""
@@ -122,16 +126,29 @@ def check_for_updates():
 chcp 65001 > nul
 echo.
 echo ===============================================
-echo      Waifu successfully updated to version {latest_version}
+echo      Updating Waifu to version {latest_version}
 echo ===============================================
 echo.
 echo Please do not close this window.
-echo The application will restart automatically in 5 seconds...
+echo The application will restart automatically.
 echo.
+echo --^> Waiting for application to exit (5 seconds)...
 timeout /t 5 /nobreak > nul
-echo --^> Cleaning up...
+echo --^> Step 1/3: Copying new files...
+robocopy "{update_dir}" . /E /IS /IT /MOVE /NFL /NDL /NJH /NJS /nc /ns /np
+if %errorlevel% geq 8 (
+    echo.
+    echo [ERROR] File copy failed. Update cannot continue.
+    robocopy . "{update_dir}" /E /MOVE > nul
+    pause
+    exit /b %errorlevel%
+)
+echo --^> Step 2/3: Cleaning up...
+rd /s /q "{update_dir}"
 del "{update_zip_path}"
-echo --^> Restarting application...
+echo --^> Step 3/3: Restarting application...
+echo.
+echo Update complete!
 start "" "{sys.executable}" main_app.py
 del "%~f0"
 """)
