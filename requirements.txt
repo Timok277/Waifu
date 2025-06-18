@@ -1,4 +1,4 @@
-Pillow
+pygame
 pygetwindow
 psutil
 requests
