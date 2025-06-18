@@ -1,0 +1,7 @@
+pygame
+pygetwindow
+psutil
+requests
+screeninfo
+pywin32
+packaging
