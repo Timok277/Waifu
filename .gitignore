@@ -133,5 +133,5 @@ docker-compose.override.yml
 # Custom
 server/.env
 logstash_buffer.db
-server/
 release.ps1
+.vscode/

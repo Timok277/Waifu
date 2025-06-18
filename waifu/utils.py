@@ -89,61 +89,49 @@ def check_for_updates():
         if parse_version(latest_version) > parse_version(config.CURRENT_VERSION):
             logging.info("Доступна новая версия! Начинаю обновление.")
             
-            download_url = latest_release.get("zipball_url")
-            if not download_url:
-                logging.error("Не найден URL для скачивания исходного кода (zipball_url) в релизе.")
+            # Ищем ассет с именем Client.zip
+            asset_to_download = None
+            for asset in latest_release.get("assets", []):
+                if asset["name"] == "Client.zip":
+                    asset_to_download = asset
+                    break
+            
+            if not asset_to_download:
+                logging.error("Не найден 'Client.zip' в последнем релизе. Обновление невозможно.")
                 return
 
-            logging.info(f"Скачивание архива с исходным кодом из {download_url}...")
-            update_zip_path = "update_source.zip"
+            download_url = asset_to_download["browser_download_url"]
+            logging.info(f"Скачивание архива Client.zip из {download_url}...")
+            update_zip_path = "Client.zip"
             with requests.get(download_url, stream=True, timeout=30) as r:
                 r.raise_for_status()
                 with open(update_zip_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
 
-            update_dir = "update_temp"
-            if os.path.exists(update_dir):
-                import shutil
-                shutil.rmtree(update_dir)
-            
             with zipfile.ZipFile(update_zip_path, 'r') as zip_ref:
-                root_folder_in_zip = zip_ref.namelist()[0]
-                zip_ref.extractall(update_dir)
-            
-            source_path = os.path.join(update_dir, root_folder_in_zip)
+                # В архиве Client.zip нет корневой папки, извлекаем напрямую
+                zip_ref.extractall(".")
 
+            # Поскольку мы извлекаем напрямую в корень, source_path не нужен,
+            # но нужно создать .bat скрипт, который дождется завершения и перезапустится.
             updater_script_path = "updater.bat"
             with open(updater_script_path, "w", encoding="utf-8") as f:
                 f.write(f"""
 @echo off
 chcp 65001 > nul
-if exist Step del Step > nul 2>&1
-if exist Waiting del Waiting > nul 2>&1
 echo.
 echo ===============================================
-echo      Updating Waifu to version {latest_version}
+echo      Waifu successfully updated to version {latest_version}
 echo ===============================================
 echo.
 echo Please do not close this window.
-echo The application will restart automatically.
+echo The application will restart automatically in 5 seconds...
 echo.
-echo --^> Waiting for application to exit...
 timeout /t 5 /nobreak > nul
-echo --^> Step 1/3: Copying new files...
-robocopy "{source_path}" . /E /IS /IT /NFL /NDL /NJH /NJS /nc /ns /np
-if %errorlevel% geq 8 (
-    echo.
-    echo [ERROR] File copy failed. Update cannot continue.
-    pause
-    exit /b %errorlevel%
-)
-echo --^> Step 2/3: Cleaning up temporary files...
-rd /s /q "{update_dir}"
+echo --^> Cleaning up...
 del "{update_zip_path}"
-echo --^> Step 3/3: Restarting application...
-echo.
-echo Update complete!
+echo --^> Restarting application...
 start "" "{sys.executable}" main_app.py
 del "%~f0"
 """)

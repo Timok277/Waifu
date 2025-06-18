@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Статус сервера Waifu</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background-color: #f4f4f9; color: #333; line-height: 1.6; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: auto; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #5a5a5a; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .box { background: #fdfdfd; padding: 15px; border-radius: 5px; border: 1px solid #eee; height: 400px; overflow-y: auto; }
+        #logs, #connections { list-style-type: none; padding: 0; margin: 0; }
+        #logs li, #connections li { padding: 8px; border-bottom: 1px solid #f0f0f0; font-size: 0.9em; }
+        #logs li:last-child, #connections li:last-child { border-bottom: none; }
+        .log-time { color: #999; margin-right: 10px; }
+        .log-level-INFO { color: #3498db; }
+        .log-level-ERROR { color: #e74c3c; font-weight: bold; }
+        .log-level-WARNING { color: #f39c12; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Статус сервера Waifu</h1>
+        <div class="grid">
+            <div class="box">
+                <h2>Входящие события</h2>
+                <ul id="connections"></ul>
+            </div>
+            <div class="box">
+                <h2>Логи</h2>
+                <ul id="logs"></ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const connectionsList = document.getElementById('connections');
+        const logsList = document.getElementById('logs');
+        const ws_protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${ws_protocol}//${window.location.host}/ws`);
+
+        function addToList(listElement, content, cssClass = '') {
+            const li = document.createElement('li');
+            li.innerHTML = content;
+            if(cssClass) li.classList.add(cssClass);
+            listElement.prepend(li);
+            // Ограничиваем количество записей для производительности
+            while (listElement.children.length > 100) {
+                listElement.removeChild(listElement.lastChild);
+            }
+        }
+
+        ws.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+                const now = new Date();
+                const timeString = now.toLocaleTimeString();
+
+                if (data.type === 'log') {
+                    const level = data.message.level;
+                    const message = data.message.text;
+                    addToList(logsList, `<span class="log-time">${timeString}</span> <strong class="log-level-${level}">${level}</strong>: ${message}`);
+                } else if (data.type === 'connection') {
+                    addToList(connectionsList, `<span class="log-time">${timeString}</span> Получено событие <strong>${data.message.event}</strong> от ${data.message.client}`);
+                }
+            } catch (e) {
+                console.error("Failed to parse websocket message:", e);
+                addToList(logsList, event.data, 'log-level-ERROR');
+            }
+        };
+
+        ws.onopen = function(event) {
+            addToList(logsList, `<span class="log-time">${new Date().toLocaleTimeString()}</span> WebSocket соединение установлено.`);
+        };
+
+        ws.onclose = function(event) {
+            addToList(logsList, `<span class="log-time">${new Date().toLocaleTimeString()}</span> WebSocket соединение закрыто.`, 'log-level-WARNING');
+        };
+
+        ws.onerror = function(event) {
+            addToList(logsList, `<span class="log-time">${new Date().toLocaleTimeString()}</span> Ошибка WebSocket.`, 'log-level-ERROR');
+        };
+    </script>
+</body>
+</html> 
