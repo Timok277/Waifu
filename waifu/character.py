@@ -118,8 +118,8 @@ class WaifuCharacter:
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
             if self.is_mouse_dragging:
                 self.is_mouse_dragging = False
-                self.physics.dx = self.last_drag_dx / 2 # Add some inertia
-                self.physics.dy = self.last_drag_dy / 2
+                self.physics.dx = self.last_drag_dx * 0.25 # Уменьшаем инерцию в 4 раза
+                self.physics.dy = self.last_drag_dy * 0.25
 
         elif event.type == pygame.MOUSEMOTION:
             if self.is_mouse_dragging:

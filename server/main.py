@@ -144,5 +144,19 @@ def health_check():
         return {"status": "ok", "influxdb": "connected"}
     return {"status": "ok", "influxdb": "disconnected"}
 
+@app.post("/log")
+async def receive_log(log_entry: dict):
+    """
+    Принимает и выводит в консоль сервера запись лога от клиента.
+    """
+    level = log_entry.get("level", "INFO")
+    message = log_entry.get("message", "")
+    source = log_entry.get("source", "unknown")
+    
+    # Просто выводим в stdout сервера для демонстрации
+    print(f"LOG | {level} | {source} | {message}")
+    
+    return {"status": "log_received"}
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=False) 

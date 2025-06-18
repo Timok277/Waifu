@@ -15,7 +15,7 @@ except ImportError:
     IS_WIN = False
 
 from waifu.character import WaifuCharacter
-from waifu.utils import check_for_updates, check_server_availability
+from waifu.utils import check_for_updates, check_server_availability, LogstashHttpHandler
 
 def main():
     """Основная функция приложения."""
@@ -29,6 +29,10 @@ def main():
         format='%(asctime)s - %(levelname)s - %(message)s',
         datefmt='%H:%M:%S'
     )
+
+    # Добавляем обработчик для отправки логов на сервер
+    log_handler = LogstashHttpHandler(config.LOG_ENDPOINT)
+    logging.getLogger().addHandler(log_handler)
 
     check_for_updates()
     logging.info("Запуск приложения Desktop Waifu на движке Pygame.")
@@ -65,24 +69,27 @@ def main():
     clock = pygame.time.Clock()
     running = True
 
-    while running:
-        delta_time = clock.tick(config.FPS)
-        # --- Обработка событий ---
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            character.handle_event(event)
+    try:
+        while running:
+            delta_time = clock.tick(config.FPS)
+            # --- Обработка событий ---
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                character.handle_event(event)
 
-        # --- Обновление и отрисовка ---
-        character.update(delta_time)
-        
-        screen.fill(TRANSPARENCY_COLOR)
-        character.draw(screen)
-        pygame.display.update()
+            # --- Обновление и отрисовка ---
+            character.update(delta_time)
+            
+            screen.fill(TRANSPARENCY_COLOR)
+            character.draw(screen)
+            pygame.display.update()
 
-        # Перемещение окна вслед за персонажем
-        if IS_WIN and hwnd:
-            win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, int(character.x), int(character.y), 0, 0, win32con.SWP_NOSIZE)
+            # Перемещение окна вслед за персонажем
+            if IS_WIN and hwnd:
+                win32gui.SetWindowPos(hwnd, win32con.HWND_TOPMOST, int(character.x), int(character.y), 0, 0, win32con.SWP_NOSIZE)
+    except KeyboardInterrupt:
+        logging.info("Получено прерывание с клавиатуры (Ctrl+C). Завершение работы...")
         
     logging.info("Приложение Desktop Waifu завершило работу.")
     pygame.quit()

@@ -4,6 +4,7 @@
 SERVER_URL = "http://26.186.125.19:8000"
 STATUS_ENDPOINT = f"{SERVER_URL}/status"
 ERROR_ENDPOINT = f"{SERVER_URL}/error"
+LOG_ENDPOINT = f"{SERVER_URL}/log"
 
 # --- Целевые Окна ---
 # Используются для определения, где персонаж будет "сидеть"
@@ -31,7 +32,7 @@ CURSOR_CHECK_INTERVAL = 200
 STATUS_SEND_INTERVAL = 5000 
 
 # --- Физические Константы ---
-WALK_SPEED = 3
+WALK_SPEED = 2
 JUMP_POWER = 12
 GRAVITY = 0.98
 TERMINAL_VELOCITY = 10
@@ -54,3 +55,4 @@ DEBUG_LOGGING = False # Включить для вывода подробных 
 
 # --- Физика и движение ---
 MAX_FALL_SPEED = 25 
+MAX_HORIZONTAL_SPEED = 25 # Ограничиваем максимальную скорость по горизонтали 

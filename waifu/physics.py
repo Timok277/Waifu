@@ -43,6 +43,10 @@ class PhysicsController:
         if self.dy > config.MAX_FALL_SPEED:
             self.dy = config.MAX_FALL_SPEED
         
+        # 3. Ограничиваем максимальную горизонтальную скорость
+        if abs(self.dx) > config.MAX_HORIZONTAL_SPEED:
+            self.dx = config.MAX_HORIZONTAL_SPEED * (1 if self.dx > 0 else -1)
+        
         next_x = self.x + self.dx
         next_y = self.y + self.dy
         
