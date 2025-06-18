@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Waifu Logs</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e1e; color: #d4d4d4; margin: 0; padding: 20px; }
+        h1 { color: #569cd6; border-bottom: 2px solid #569cd6; padding-bottom: 10px; }
+        #log-container { background-color: #252526; border: 1px solid #333; border-radius: 5px; padding: 15px; height: 80vh; overflow-y: scroll; font-family: 'Consolas', 'Courier New', monospace; font-size: 14px; }
+        .log-entry { padding: 5px; border-bottom: 1px solid #333; }
+        .log-entry:last-child { border-bottom: none; }
+        .log-level-INFO { color: #b5cea8; }
+        .log-level-WARNING { color: #cd9731; }
+        .log-level-ERROR { color: #f44747; }
+        .log-level-CRITICAL { color: #f44747; font-weight: bold; }
+        .client-id { color: #4ec9b0; font-weight: bold; margin-right: 10px; }
+        .source { color: #9cdcfe; margin-right: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Live Logs</h1>
+    <div id="log-container">
+        <!-- Логи будут добавляться сюда -->
+    </div>
+
+    <script>
+        const logContainer = document.getElementById('log-container');
+        const ws = new WebSocket(`ws://${location.host}/ws`);
+
+        ws.onmessage = function(event) {
+            const logEntry = JSON.parse(event.data);
+            const entryDiv = document.createElement('div');
+            entryDiv.className = 'log-entry';
+
+            const clientIdSpan = document.createElement('span');
+            clientIdSpan.className = 'client-id';
+            clientIdSpan.textContent = `[${logEntry.client_id || 'SERVER'}]`;
+
+            const levelSpan = document.createElement('span');
+            levelSpan.className = `log-level-${logEntry.level}`;
+            levelSpan.textContent = `[${logEntry.level}]`;
+
+            const sourceSpan = document.createElement('span');
+            sourceSpan.className = 'source';
+            sourceSpan.textContent = `[${logEntry.source}]`;
+
+            const messageSpan = document.createElement('span');
+            messageSpan.textContent = logEntry.message;
+            
+            entryDiv.appendChild(clientIdSpan);
+            entryDiv.appendChild(levelSpan);
+            entryDiv.appendChild(sourceSpan);
+            entryDiv.appendChild(messageSpan);
+            
+            logContainer.appendChild(entryDiv);
+            logContainer.scrollTop = logContainer.scrollHeight; // Auto-scroll
+        };
+
+        ws.onopen = function(event) {
+            console.log("WebSocket connection established.");
+        };
+        ws.onclose = function(event) {
+            console.log("WebSocket connection closed.");
+        };
+    </script>
+</body>
+</html> 

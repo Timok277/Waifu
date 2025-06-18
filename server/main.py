@@ -38,15 +38,24 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
+        # Отправляем историю при подключении к странице логов
+        for log in log_history:
+            try:
+                await websocket.send_text(json.dumps(log))
+            except Exception:
+                # Клиент мог отключиться, пока мы слали историю
+                break
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
 
-    async def broadcast_json(self, data: dict):
-        message = json.dumps(data)
+    async def broadcast(self, message: str):
         for connection in self.active_connections:
             await connection.send_text(message)
 
+# --- Глобальное хранилище логов и менеджер WebSocket ---
+log_history = []
 manager = ConnectionManager()
 
 # --- InfluxDB ---
@@ -74,11 +83,16 @@ class StatusPayload(BaseModel):
     active_window_title: str
     active_window_process: str
 
-# --- Маршруты ---
+# --- HTTP Эндпоинты ---
 @app.get("/", response_class=HTMLResponse)
 async def get_root(request: Request):
-    """Отдает главную страницу с логами."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    """Отдает главную страницу (в будущем может быть дашборд)."""
+    return templates.TemplateResponse("index.html", {"request": request, "log_count": len(log_history)})
+
+@app.get("/logs", response_class=HTMLResponse)
+async def get_logs_page(request: Request):
+    """Отдает страницу для просмотра логов в реальном времени."""
+    return templates.TemplateResponse("logs.html", {"request": request})
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
@@ -86,10 +100,11 @@ async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text() # Просто держим соединение
+            # Просто держим соединение открытым
+            await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket)
-        logger.info("Клиент WebSocket отключился.")
+        print("Client disconnected from websocket")
 
 @app.post("/status")
 async def receive_status(payload: StatusPayload, request: Request):
@@ -98,13 +113,14 @@ async def receive_status(payload: StatusPayload, request: Request):
     
     log_msg = f"Статус: {payload.action}, Процесс: {payload.active_window_process}"
     logger.info(log_msg)
-    await manager.broadcast_json({"type": "log", "message": {"level": "INFO", "text": log_msg}})
-    await manager.broadcast_json({"type": "connection", "message": {"event": "status", "client": client_host}})
+    await manager.broadcast(log_msg)
+    await manager.broadcast(f"Connection event: status, client: {client_host}")
 
     if not write_api:
         error_msg = "InfluxDB не настроен на сервере."
         logger.error(error_msg)
-        await manager.broadcast_json({"type": "log", "message": {"level": "ERROR", "text": error_msg}})
+        await manager.broadcast(error_msg)
+        await manager.broadcast(f"Connection event: error, client: {client_host}")
         return {"status": "error", "message": error_msg}
 
     try:
@@ -122,7 +138,8 @@ async def receive_status(payload: StatusPayload, request: Request):
     except Exception as e:
         error_msg = f"Ошибка записи в InfluxDB: {e}"
         logger.error(error_msg)
-        await manager.broadcast_json({"type": "log", "message": {"level": "ERROR", "text": error_msg}})
+        await manager.broadcast(error_msg)
+        await manager.broadcast(f"Connection event: error, client: {client_host}")
         return {"status": "error", "message": str(e)}
 
 @app.post("/error")
@@ -132,8 +149,8 @@ async def receive_error(request: Request, payload: Dict):
     error_msg = f"Ошибка от клиента {client_host}: {json.dumps(payload)}"
     logger.error(error_msg)
     
-    await manager.broadcast_json({"type": "log", "message": {"level": "ERROR", "text": error_msg}})
-    await manager.broadcast_json({"type": "connection", "message": {"event": "error", "client": client_host}})
+    await manager.broadcast(error_msg)
+    await manager.broadcast(f"Connection event: error, client: {client_host}")
     
     return {"status": "logged"}
 
@@ -147,16 +164,18 @@ def health_check():
 @app.post("/log")
 async def receive_log(log_entry: dict):
     """
-    Принимает и выводит в консоль сервера запись лога от клиента.
+    Принимает запись лога, добавляет в историю и транслирует по WebSocket.
     """
-    level = log_entry.get("level", "INFO")
-    message = log_entry.get("message", "")
-    source = log_entry.get("source", "unknown")
+    log_history.append(log_entry)
+    # Ограничиваем историю, чтобы не переполнять память
+    if len(log_history) > 200:
+        log_history.pop(0)
     
-    # Просто выводим в stdout сервера для демонстрации
-    print(f"LOG | {level} | {source} | {message}")
-    
+    # В broadcast передаем JSON-строку
+    await manager.broadcast(json.dumps(log_entry))
     return {"status": "log_received"}
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8000, debug=False) 
+    # Запуск uvicorn для асинхронного FastAPI
+    import uvicorn
+    uvicorn.run(app, host='0.0.0.0', port=8000, debug=False) 

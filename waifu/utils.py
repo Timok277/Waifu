@@ -184,28 +184,24 @@ def send_to_server(endpoint: str, data: dict):
 
 class LogstashHttpHandler(logging.Handler):
     """
-    Кастомный обработчик логов, который отправляет каждую запись
-    в виде JSON на указанный HTTP-эндпоинт.
+    Кастомный обработчик логов для отправки записей на HTTP эндпоинт (сервер).
     """
-    def __init__(self, url, method='POST'):
+    def __init__(self, server_url, client_id):
         super().__init__()
-        self.url = url
-        self.method = method
+        self.url = f"{server_url}/log"
+        self.client_id = client_id
 
     def emit(self, record):
         log_entry = {
             "timestamp": datetime.utcnow().isoformat(),
             "level": record.levelname,
             "message": self.format(record),
-            "source": record.name
+            "source": record.name,
+            "client_id": self.client_id
         }
-        
-        def _send_log():
-            try:
-                requests.post(self.url, json=log_entry, timeout=2)
-            except requests.exceptions.RequestException:
-                # В случае ошибки просто игнорируем, чтобы не зациклиться
-                pass
-
-        # Отправляем в отдельном потоке, чтобы не блокировать основное приложение
-        threading.Thread(target=_send_log, daemon=True).start() 
+        try:
+            # Используем timeout, чтобы не блокировать приложение надолго
+            requests.post(self.url, json=log_entry, timeout=2)
+        except requests.RequestException:
+            # Не выводим ошибку, чтобы не попасть в бесконечный цикл логирования
+            pass 

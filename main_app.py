@@ -5,6 +5,8 @@ import sys
 import os
 import logging
 import config
+import traceback
+import uuid
 
 try:
     import win32gui
@@ -26,16 +28,20 @@ def main():
     # Настройка логирования
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S'
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
+    client_id = str(uuid.uuid4())[:8]
+
     # Добавляем обработчик для отправки логов на сервер
-    log_handler = LogstashHttpHandler(config.LOG_ENDPOINT)
-    logging.getLogger().addHandler(log_handler)
+    http_handler = LogstashHttpHandler(
+        config.SERVER_URL, 
+        client_id=client_id
+    )
+    logging.getLogger().addHandler(http_handler)
 
     check_for_updates()
-    logging.info("Запуск приложения Desktop Waifu на движке Pygame.")
+    logging.info(f"Приложение запущено. Client ID: {client_id}")
     if not check_server_availability():
         logging.warning("Работа будет продолжена без отправки данных на сервер.")
 
