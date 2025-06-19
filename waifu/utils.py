@@ -17,6 +17,8 @@ import zipfile
 import subprocess
 import threading
 from packaging.version import parse as parse_version
+import tkinter as tk
+import tkinter.messagebox as messagebox
 
 # --- Новая зависимость для get_desktop_windows ---
 try:
@@ -75,92 +77,84 @@ def scale_image(image, scale_factor):
     return pygame.transform.smoothscale(image, new_size)
 
 def check_for_updates():
-    """Проверяет наличие обновлений на GitHub и запускает процесс обновления."""
-    logging.info(f"Текущая версия: {config.CURRENT_VERSION}. Проверка обновлений...")
+    """
+    Проверяет наличие новой версии на GitHub и предлагает обновиться.
+    Скачивает .exe и запускает .bat скрипт для его замены.
+    """
+    logging.info("Проверка обновлений...")
     try:
         api_url = f"https://api.github.com/repos/{config.GITHUB_REPO}/releases/latest"
-        response = requests.get(api_url, timeout=10)
+        response = requests.get(api_url, timeout=5)
         response.raise_for_status()
         latest_release = response.json()
         latest_version = latest_release["tag_name"].lstrip('v')
-        
-        logging.info(f"Последняя версия на GitHub: {latest_version}")
-        
+
         if parse_version(latest_version) > parse_version(config.CURRENT_VERSION):
-            logging.info("Доступна новая версия! Начинаю обновление.")
+            logging.info(f"Найдена новая версия: {latest_version}")
             
-            # Ищем ассет с именем Client.zip
-            asset_to_download = None
+            # Ищем .exe файл в ассетах релиза
+            asset_url = None
+            asset_name = ""
             for asset in latest_release.get("assets", []):
-                if asset["name"] == "Client.zip":
-                    asset_to_download = asset
+                if asset["name"].startswith("Waifu-Client-") and asset["name"].endswith(".exe"):
+                    asset_url = asset["browser_download_url"]
+                    asset_name = asset["name"]
                     break
             
-            if not asset_to_download:
-                logging.error("Не найден 'Client.zip' в последнем релизе. Обновление невозможно.")
+            if not asset_url:
+                logging.error("В последнем релизе не найден .exe файл для обновления.")
                 return
 
-            download_url = asset_to_download["browser_download_url"]
-            logging.info(f"Скачивание архива Client.zip из {download_url}...")
-            update_zip_path = "Client.zip"
-            with requests.get(download_url, stream=True, timeout=30) as r:
+            # Спрашиваем пользователя, хочет ли он обновиться
+            root = tk.Tk()
+            root.withdraw()
+            if not messagebox.askyesno(
+                "Доступно обновление",
+                f"Доступна новая версия {latest_version}. Хотите обновиться?"
+            ):
+                logging.info("Пользователь отказался от обновления.")
+                return
+
+            logging.info(f"Скачивание {asset_name}...")
+            update_exe_path = os.path.join(os.getcwd(), "update.exe")
+            
+            with requests.get(asset_url, stream=True) as r:
                 r.raise_for_status()
-                with open(update_zip_path, 'wb') as f:
+                with open(update_exe_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
+            
+            logging.info("Скачивание завершено. Создание скрипта обновления...")
 
-            update_dir = "update_temp"
-            if os.path.exists(update_dir):
-                import shutil
-                shutil.rmtree(update_dir)
-            
-            with zipfile.ZipFile(update_zip_path, 'r') as zip_ref:
-                # Архив Client.zip не имеет корневой папки, извлекаем его содержимое в update_dir
-                zip_ref.extractall(update_dir)
-            
-            # Создаем .bat скрипт, который дождется завершения, скопирует файлы и перезапустится.
-            updater_script_path = "updater.bat"
-            with open(updater_script_path, "w", encoding="utf-8") as f:
+            # Получаем имя текущего исполняемого файла
+            current_exe_name = os.path.basename(sys.executable)
+
+            # Создаем .bat файл для обновления
+            updater_script_path = os.path.join(os.getcwd(), "updater.bat")
+            with open(updater_script_path, "w") as f:
                 f.write(f"""
 @echo off
-chcp 65001 > nul
-echo.
-echo ===============================================
-echo      Updating Waifu to version {latest_version}
-echo ===============================================
-echo.
-echo Please do not close this window.
-echo The application will restart automatically.
-echo.
-echo --^> Waiting for application to exit (5 seconds)...
-timeout /t 5 /nobreak > nul
-echo --^> Step 1/3: Copying new files...
-robocopy "{update_dir}" . /E /IS /IT /MOVE /NFL /NDL /NJH /NJS /nc /ns /np
-if %errorlevel% geq 8 (
-    echo.
-    echo [ERROR] File copy failed. Update cannot continue.
-    robocopy . "{update_dir}" /E /MOVE > nul
-    pause
-    exit /b %errorlevel%
-)
-echo --^> Step 2/3: Cleaning up...
-rd /s /q "{update_dir}"
-del "{update_zip_path}"
-echo --^> Step 3/3: Restarting application...
-echo.
-echo Update complete!
-start "" "{sys.executable}" main_app.py
+echo Ожидание закрытия приложения...
+timeout /t 3 /nobreak > nul
+taskkill /IM "{current_exe_name}" /F > nul
+echo Замена файлов...
+del "{current_exe_name}"
+rename "update.exe" "{current_exe_name}"
+echo Запуск новой версии...
+start "" "{current_exe_name}"
+echo Удаление скрипта обновления...
 del "%~f0"
-""")
-            
+                """.strip())
+
+            # Запускаем .bat и выходим
+            logging.info("Запуск скрипта обновления и выход из приложения...")
             subprocess.Popen([updater_script_path], creationflags=subprocess.CREATE_NEW_CONSOLE)
-            logging.info("Запущен скрипт обновления. Приложение будет закрыто.")
-            sys.exit(0)
-            
+            sys.exit()
+
         else:
-            logging.info("У вас последняя версия приложения.")
-            
-    except requests.exceptions.RequestException as e:
+            logging.info("У вас установлена последняя версия.")
+
+    except requests.RequestException as e:
         logging.error(f"Не удалось проверить обновления: {e}")
     except Exception as e:
         logging.error(f"Произошла ошибка во время процесса обновления: {e}")
