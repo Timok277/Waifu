@@ -176,7 +176,7 @@ def send_to_server(endpoint: str, data: dict):
             pass 
     threading.Thread(target=_send, daemon=True).start() 
 
-class LogstashHttpHandler(logging.Handler):
+class ServerLogHandler(logging.Handler):
     """
     Кастомный обработчик логов для отправки записей на HTTP эндпоинт (сервер).
     """
