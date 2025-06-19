@@ -89,7 +89,7 @@ def check_for_updates():
         latest_release = response.json()
         latest_version = latest_release["tag_name"].lstrip('v')
 
-        if parse_version(latest_version) > parse_version(config.CURRENT_VERSION):
+        if parse_version(latest_version) > parse_version(config.VERSION):
             logging.info(f"Найдена новая версия: {latest_version}")
             
             # Ищем .exe файл в ассетах релиза
