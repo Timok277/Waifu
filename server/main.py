@@ -168,7 +168,7 @@ async def receive_log(log_entry: dict):
     """
     log_history.append(log_entry)
     # Ограничиваем историю, чтобы не переполнять память
-    if len(log_history) > config.MAX_LOG_HISTORY:
+    if len(log_history) > 200:
         log_history.pop(0)
     
     # В broadcast передаем JSON-строку

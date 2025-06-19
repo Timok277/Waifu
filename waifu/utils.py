@@ -17,8 +17,9 @@ import zipfile
 import subprocess
 import threading
 from packaging.version import parse as parse_version
-import tkinter as tk
-import tkinter.messagebox as messagebox
+import shutil
+import tempfile
+import platform
 
 # --- Новая зависимость для get_desktop_windows ---
 try:
@@ -78,86 +79,78 @@ def scale_image(image, scale_factor):
 
 def check_for_updates():
     """
-    Проверяет наличие новой версии на GitHub и предлагает обновиться.
-    Скачивает .exe и запускает .bat скрипт для его замены.
+    Проверяет наличие обновлений на GitHub, скачивает их и подготавливает
+    скрипт для установки.
     """
-    logging.info("Проверка обновлений...")
+    logging.info(f"Текущая версия: {config.CURRENT_VERSION}")
     try:
+        # 1. Получаем информацию о последнем релизе
         api_url = f"https://api.github.com/repos/{config.GITHUB_REPO}/releases/latest"
         response = requests.get(api_url, timeout=5)
         response.raise_for_status()
         latest_release = response.json()
         latest_version = latest_release["tag_name"].lstrip('v')
+        logging.info(f"Последняя версия на GitHub: {latest_version}")
 
-        if parse_version(latest_version) > parse_version(config.VERSION):
-            logging.info(f"Найдена новая версия: {latest_version}")
-            
-            # Ищем .exe файл в ассетах релиза
-            asset_url = None
-            asset_name = ""
-            for asset in latest_release.get("assets", []):
-                if asset["name"].startswith("Waifu-Client-") and asset["name"].endswith(".exe"):
-                    asset_url = asset["browser_download_url"]
-                    asset_name = asset["name"]
-                    break
-            
-            if not asset_url:
-                logging.error("В последнем релизе не найден .exe файл для обновления.")
+        # 2. Сравниваем версии
+        if latest_version > config.CURRENT_VERSION:
+            logging.info("Доступна новая версия! Начинаю процесс обновления...")
+
+            # 3. Находим ассет с клиентским архивом
+            asset = next((a for a in latest_release['assets'] if a['name'] == 'Client.zip'), None)
+            if not asset:
+                logging.error("Не найден 'Client.zip' в последнем релизе.")
                 return
 
-            # Спрашиваем пользователя, хочет ли он обновиться
-            root = tk.Tk()
-            root.withdraw()
-            if not messagebox.askyesno(
-                "Доступно обновление",
-                f"Доступна новая версия {latest_version}. Хотите обновиться?"
-            ):
-                logging.info("Пользователь отказался от обновления.")
-                return
-
-            logging.info(f"Скачивание {asset_name}...")
-            update_exe_path = os.path.join(os.getcwd(), "update.exe")
+            # 4. Скачиваем архив во временную папку
+            temp_dir = tempfile.gettempdir()
+            zip_path = os.path.join(temp_dir, "waifu_update.zip")
+            logging.info(f"Скачиваю архив... {asset['browser_download_url']}")
             
-            with requests.get(asset_url, stream=True) as r:
+            with requests.get(asset['browser_download_url'], stream=True, timeout=30) as r:
                 r.raise_for_status()
-                with open(update_exe_path, 'wb') as f:
+                with open(zip_path, 'wb') as f:
                     for chunk in r.iter_content(chunk_size=8192):
                         f.write(chunk)
+            logging.info(f"Архив успешно скачан в: {zip_path}")
             
-            logging.info("Скачивание завершено. Создание скрипта обновления...")
+            # 5. Создаем и запускаем .bat скрипт для обновления
+            app_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+            main_script_path = os.path.join(app_path, "main_app.py")
+            pid = os.getpid()
 
-            # Получаем имя текущего исполняемого файла
-            current_exe_name = os.path.basename(sys.executable)
-
-            # Создаем .bat файл для обновления
-            updater_script_path = os.path.join(os.getcwd(), "updater.bat")
-            with open(updater_script_path, "w") as f:
-                f.write(f"""
+            updater_script_path = os.path.join(temp_dir, "updater.bat")
+            
+            script_content = f"""
 @echo off
-echo Ожидание закрытия приложения...
-timeout /t 3 /nobreak > nul
-taskkill /IM "{current_exe_name}" /F > nul
-echo Замена файлов...
-del "{current_exe_name}"
-rename "update.exe" "{current_exe_name}"
-echo Запуск новой версии...
-start "" "{current_exe_name}"
-echo Удаление скрипта обновления...
-del "%~f0"
-                """.strip())
+echo Waiting for the application to close...
+taskkill /PID {pid} /F > nul 2>&1
+timeout /t 2 /nobreak > nul
 
-            # Запускаем .bat и выходим
-            logging.info("Запуск скрипта обновления и выход из приложения...")
+echo Unpacking update...
+tar -xf "{zip_path}" -C "{app_path}"
+
+echo Relaunching application...
+start "" pythonw "{main_script_path}"
+
+echo Cleaning up...
+del "{zip_path}"
+del "%~f0"
+"""
+            with open(updater_script_path, "w") as f:
+                f.write(script_content)
+
+            logging.info("Запускаю скрипт обновления и закрываю приложение...")
             subprocess.Popen([updater_script_path], creationflags=subprocess.CREATE_NEW_CONSOLE)
             sys.exit()
 
         else:
-            logging.info("У вас установлена последняя версия.")
+            logging.info("У вас последняя версия.")
 
     except requests.RequestException as e:
-        logging.error(f"Не удалось проверить обновления: {e}")
+        logging.error(f"Ошибка при проверке обновлений: {e}")
     except Exception as e:
-        logging.error(f"Произошла ошибка во время процесса обновления: {e}")
+        logging.error(f"Непредвиденная ошибка в процессе обновления: {e}", exc_info=True)
 
 def check_server_availability():
     try:
@@ -176,7 +169,7 @@ def send_to_server(endpoint: str, data: dict):
             pass 
     threading.Thread(target=_send, daemon=True).start() 
 
-class ServerLogHandler(logging.Handler):
+class LogstashHttpHandler(logging.Handler):
     """
     Кастомный обработчик логов для отправки записей на HTTP эндпоинт (сервер).
     """
